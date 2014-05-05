@@ -40,7 +40,10 @@ public class MyTagger {
 			"FOOT_LEFT", "HIP_RIGHT", "KNEE_RIGHT", "ANKLE_RIGHT", "FOOT_RIGHT" };
 
 	public static int K = 10;
-	public static int NUM_FILES_TO_USE = 36; // This needs to be at least K
+	public static int NUM_FILES_TO_USE = 10; // This needs to be at least K
+	public static boolean USING_BINARY_ANGLE_FEATURES = true;
+	public static int EPSILON = 15;
+	public static int ANGLE_DIFFERENCE = 5;
 
 	public static void main(String[] args) throws Exception {
 		// Generate the InstanceLists of training/testing data.
@@ -87,10 +90,10 @@ public class MyTagger {
 
 		// -- randomize the data
 		Collections.shuffle(dataFiles);
-		
+
 		// -- make it arbitrarily shorter so I don't run out of memory
-			
-		while(dataFiles.size() > NUM_FILES_TO_USE){
+
+		while (dataFiles.size() > NUM_FILES_TO_USE) {
 			dataFiles.remove(0);
 		}
 
@@ -172,8 +175,8 @@ public class MyTagger {
 						"train", "test" }, labels, labels) {
 			@Override
 			public boolean precondition(TransducerTrainer tt) {
-				// evaluate model every 5 training iterations
-				return tt.getIteration() % 5 == 0;
+				// evaluate model every training iteration
+				return true;
 			}
 		};
 		crfTrainer.addEvaluator(evaluator);
@@ -358,7 +361,8 @@ public class MyTagger {
 							.parseDouble(tokens[l][f * 3 + 3]);
 				}
 
-				double[] angleValues = new double[400];
+				double[] angleFeatureValues = new double[400 * (360 / ANGLE_DIFFERENCE + 1)];
+				int angleValueIndex = 0;
 				for (int f = 1; f < 20; f++) {
 					for (int g = f + 1; g < 20; g++) {
 						// Generate all angle names.
@@ -419,7 +423,32 @@ public class MyTagger {
 							// + "_angle");
 						}
 
-						angleValues[featureIndices.size() - 1] = angle;
+						angleFeatureValues[angleValueIndex++] = angle;
+
+						// If we're using the new binary features
+						if (USING_BINARY_ANGLE_FEATURES) {
+							for (int i = 0; i < 360; i += ANGLE_DIFFERENCE) {
+								if (i + EPSILON >= 360) {
+									if (angle >= i
+											|| angle <= (i + EPSILON) % 360) {
+										int binaryFeatureIndex = featureAlphabet
+												.lookupIndex(features[f] + "_"
+														+ features[g]
+														+ "_angle_" + i + "-"
+														+ (i + 15));
+										featureIndices.add(binaryFeatureIndex);
+										angleFeatureValues[angleValueIndex++] = 1;
+									}
+								} else if (angle >= i && angle <= i + EPSILON) {
+									int binaryFeatureIndex = featureAlphabet
+											.lookupIndex(features[f] + "_"
+													+ features[g] + "_angle_"
+													+ i + "-" + (i + 15));
+									featureIndices.add(binaryFeatureIndex);
+									angleFeatureValues[angleValueIndex++] = 1;
+								}
+							}
+						}
 					}
 				}
 				// System.out.println();
@@ -450,7 +479,7 @@ public class MyTagger {
 				}
 
 				for (int i = positionValues.length; i < featureIndicesArr.length; i++) {
-					values[i] = angleValues[i];
+					values[i] = angleFeatureValues[i];
 				}
 
 				// System.out.println("Feature Alphabet:\n\n" +
